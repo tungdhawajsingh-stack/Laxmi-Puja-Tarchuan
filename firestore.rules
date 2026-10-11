@@ -1,0 +1,24 @@
+rules_version = '2';
+service cloud.firestore {
+ match /databases/{database}/documents {
+  function signedIn(){return request.auth != null;}
+  function profile(){return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;}
+  function isAdmin(){return signedIn() && profile().role == 'admin';}
+  function ownArea(area){return signedIn() && profile().role == 'user' && profile().area == area;}
+  match /users/{uid} {
+   allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+   allow write: if false;
+  }
+  match /people/{id} {
+   allow read: if isAdmin() || ownArea(resource.data.area);
+   allow create: if isAdmin() && request.resource.data.area in ['पुरवारी टोला','पच्छियारी टोला','दक्षिण टोला','बिचला टोला','मोती टोला','पाहनटोली'] && request.resource.data.name is string && request.resource.data.paid == false;
+   allow update: if isAdmin() || (signedIn() && profile().role == 'user' && resource.data.area == profile().area && resource.data.paid == false && request.resource.data.area == resource.data.area && request.resource.data.name == resource.data.name && request.resource.data.paid == true && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['paid','paidAt','paidBy']) && request.resource.data.paidBy == request.auth.uid);
+   allow delete: if isAdmin();
+  }
+  match /donations/{id} {
+   allow read: if isAdmin() || ownArea(resource.data.area);
+   allow create: if isAdmin() || (signedIn() && profile().role == 'user' && request.resource.data.area == profile().area && request.resource.data.createdBy == request.auth.uid && request.resource.data.amount is number && request.resource.data.amount > 0 && exists(/databases/$(database)/documents/people/$(request.resource.data.personId)) && get(/databases/$(database)/documents/people/$(request.resource.data.personId)).data.area == profile().area);
+   allow update, delete: if isAdmin();
+  }
+ }
+}
